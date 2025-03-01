@@ -1,0 +1,118 @@
+---
+title: "COVID 19 Data Analysis"
+author: "Ermias"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(caret)
+library(forecast)
+library(knitr)
+```
+
+# Step 1 - Import the source data
+
+```{r import_data}
+url <- "https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_covid19_confirmed_global.csv"
+covid_data <- read.csv(url)
+```
+
+# Step 2 - Clean up the dataset
+
+```{r tidy_up_dataset}
+# Reshape Data
+covid_df <- covid_data %>% 
+  pivot_longer(cols = starts_with("X"), names_to = "date", values_to = "cases") %>% 
+  mutate(date = mdy(gsub("X", "", date)))
+```
+
+# Step 3 - Analyze the data
+
+```{r summary_stats}
+glimpse(covid_df)
+summary(covid_df$cases)
+```
+
+**Visualization 1: Global COVID Trends Over Time**
+
+```{r global_trend, fig.width=8, fig.height=5}
+df_global <- covid_df %>% group_by(date) %>% summarise(total_cases = sum(cases, na.rm = TRUE))
+
+ggplot(df_global, aes(x = date, y = total_cases)) + 
+  geom_line(color = "blue") + 
+  labs(title = "Global COVID-19 Cases Over Time", x = "Date", y = "Total Cases") + 
+  theme_minimal()
+```
+
+**Summary of the historical COVID trend**
+
+- The global COVID cases have shown a steady upward trend since 2020.
+
+- A significant acceleration in infection occurred in 2021 and early 2022
+
+- The growth rate appears to slow towards late 2022 and 2023 indicating a some sort of stabilization in the rate of spread
+
+
+
+**Visualization 2: Top 5 Affected Countries **
+
+```{r top_countries, fig.width=8, fig.height=5}
+top_countries <- covid_df %>% 
+  filter(date == max(date)) %>% 
+  group_by(Country.Region) %>% 
+  summarise(total_cases = sum(cases, na.rm = TRUE)) %>% 
+  arrange(desc(total_cases)) %>% 
+  head(5)
+
+ggplot(top_countries, aes(x = reorder(Country.Region, -total_cases), y = total_cases, fill = Country.Region)) + 
+  geom_bar(stat = "identity") + 
+  labs(title = "Top 5 Affected Countries", x = "Country", y = "Total Cases") + 
+  theme_minimal() + 
+  coord_flip()
+```
+
+# Step 4 - Predictive Model: Time Series Forecasting
+
+```{r model, fig.width=8, fig.height=5}
+# Creates a time series object from the case total data starting from January 2020 and forecasts 365 future time points
+ts_data <- ts(df_global$total_cases, start = c(2020, 1), frequency = 365)
+model <- auto.arima(ts_data)
+forecasted <- forecast(model, h=365)
+
+plot(forecasted, main="365-Day COVID-19 Cases Forecast")
+```
+
+**Summary of the Forecasted Output**
+
+- The ARIMA based forecast predicts that COVID-19 cases will continue to rise over the next year
+
+- The confidence interval for the forecast widens over time which indicates that increasing uncertainty in long-term prediction of COVID cases. However, the central trend suggests continued but slower growth which aligns with the historical trend we saw in visualization 1 above.
+
+- The historical and forecasted trends aligns well confirming an ongoing but moderate rise in cases
+
+# Step 5 - Bias and Limitations
+
+**Data Reporting Bias** 
+
+- Different countries have different testing capacities and policies that could lead to under-reporting or over-reporting of cases.
+
+**Data Delays** 
+
+- Some cases might be reported late which will affect the trend analysis.
+
+**Lock down Policy Impacts** 
+
+- Changes in governmental policies affect case reporting trends, making predictions less reliable.
+
+**Forecasting Assumptions** 
+
+- The ARIMA model assumes past trends continue but that could not always be the case in a real world.
+
